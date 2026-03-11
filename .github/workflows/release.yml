@@ -44,10 +44,11 @@ jobs:
           file: README.md
           tag: ${{ github.ref }}
       - name: tsffer README evidence
-        uses: AnotherDaniel/tsffer@v0.5.4
+        uses: AnotherDaniel/tsffer@v0.5.5
         id: tsffer_README
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
           mode: reference
           reference_properties: |
             {
@@ -72,15 +73,16 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Package tsffer snippets and add to release artifacts
-        uses: AnotherDaniel/tsffer@v0.5.4
+        uses: AnotherDaniel/tsffer@v0.5.5
         id: package_tsffer
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
           mode: package
           release_upload: true
 
       - name: Link, score and publish TSF tree
-        uses: AnotherDaniel/tsflink@v0.1.5
+        uses: AnotherDaniel/tsflink@v0.1.6
         id: link_tsffer
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
