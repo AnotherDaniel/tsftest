@@ -33,7 +33,7 @@ jobs:
       contents: write
       actions: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Add README evidence item
       - name: Upload README to release
@@ -70,7 +70,7 @@ jobs:
     needs:
       - quality_artifacts
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Package tsffer snippets and add to release artifacts
         uses: AnotherDaniel/tsffer@v0.5.5
@@ -86,3 +86,13 @@ jobs:
         id: link_tsffer
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload TSF report to release artifacts
+        uses: svenstaro/upload-release-action@v2
+        id: upload_TSF_report
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: ${{ steps.link_tsffer.outputs.trudag_report }}
+          tag: ${{ github.ref }}
+      - name: Print TSF score
+        run: echo "TSF score is ${{ steps.link_tsffer.outputs.trudag_score }}"
