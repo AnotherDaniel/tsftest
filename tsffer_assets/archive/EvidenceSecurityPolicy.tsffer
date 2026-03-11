@@ -1,0 +1,20 @@
+{
+  "asset-info": {
+    "description": "Project implements Eclipse Security Policy",
+    "reference-properties": {
+      "reference_type": "webpage",
+      "url": "https://github.com/eclipse-uprotocol/up-spec/blob/bc026a8e31ad3c964ebaf12ab68c019b75c635d1/SECURITY.md"
+    },
+    "name": "EvidenceSecurityPolicy",
+    "tsf-ids": [
+      "EA-SECURITY_POLICY"
+    ]
+  },
+  "context-info": {
+    "by-workflow": "Release",
+    "commit-sha": "a8853ccd16d467fd5eda67ecf946cca29224d1d1",
+    "ref": "refs/tags/v0.0.4",
+    "release-url": "https://github.com/AnotherDaniel/up-rust/releases/tag/v0.0.4",
+    "repository": "AnotherDaniel/up-rust"
+  }
+}

@@ -1,0 +1,44 @@
+# Copyright (C) 2026 Eclipse Foundation and others.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Eclipse Public License v. 2.0 which is available at
+# http://www.eclipse.org/legal/epl-2.0.
+#
+# SPDX-FileType: SOURCE
+# SPDX-FileCopyrightText: 2026 Eclipse Foundation
+# SPDX-License-Identifier: EPL-2.0
+
+---
+# .github/workflows/ci.yml
+name: Continuous Integration
+
+# runs on every branch so PRs get checked
+on:
+    push:
+    pull_request:
+    workflow_dispatch:
+
+permissions:
+    contents: read
+    actions: read
+    id-token: none
+    pull-requests: write
+    statuses: write
+
+jobs:
+    lint-everything:
+        name: Validate workflow YAML
+        runs-on: ubuntu-latest
+        env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        steps:
+            - uses: actions/checkout@v4
+            - name: Lint workflow files
+              uses: github/super-linter@v4
+              env:
+                  # FILTER_REGEX_INCLUDE: .github/workflows/*.yml
+                  DEFAULT_BRANCH: main
+                  FILTER_REGEX_EXCLUDE: (CODE_OF_CONDUCT|CONTRIBUTING|NOTICES|SECURITY)\.md|LICENSE|LICENSES/.*
+                  VALIDATE_JSON: true
+                  VALIDATE_MARKDOWN: true
+                  VALIDATE_YAML: true

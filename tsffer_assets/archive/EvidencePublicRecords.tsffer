@@ -1,0 +1,26 @@
+{
+  "asset-info": {
+    "description": "Project records are entirely public",
+    "reference-properties": [
+      {
+        "reference_type": "webpage",
+        "url": "https://github.com/eclipse-uprotocol/up-rust/issues"
+      },
+      {
+        "reference_type": "webpage",
+        "url": "https://github.com/eclipse-uprotocol/up-rust/pulls"
+      }
+    ],
+    "name": "EvidencePublicRecords",
+    "tsf-ids": [
+      "EA-PUBLIC_RECORDS"
+    ]
+  },
+  "context-info": {
+    "by-workflow": "Release",
+    "commit-sha": "a8853ccd16d467fd5eda67ecf946cca29224d1d1",
+    "ref": "refs/tags/v0.0.4",
+    "release-url": "https://github.com/AnotherDaniel/up-rust/releases/tag/v0.0.4",
+    "repository": "AnotherDaniel/up-rust"
+  }
+}
