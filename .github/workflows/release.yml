@@ -82,7 +82,7 @@ jobs:
           release_upload: true
 
       - name: Link, score and publish TSF tree
-        uses: AnotherDaniel/tsflink@v0.1.1
+        uses: AnotherDaniel/tsflink@v0.1.2
         id: link_tsffer
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
