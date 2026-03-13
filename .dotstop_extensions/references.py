@@ -1,5 +1,6 @@
 import os
 import requests
+import subprocess
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -52,7 +53,6 @@ class WebReference(BaseReference):
         self._url = url
         self._start = start
         self._end = end
-  
 
   @classmethod
   def type(cls) -> str:
@@ -114,7 +114,7 @@ class DownloadUrlReference(BaseReference):
 
 
 class OpenFastTraceReference(BaseReference):
-  def __init__(self, requirement_id: str) -> None:
+  def __init__(self, requirement_id: str, file_patterns: str = "", tags: str = "") -> None:
         """
         References to an OpenFastTrace requirement idenfier.
 
@@ -122,12 +122,19 @@ class OpenFastTraceReference(BaseReference):
 
         Args:
             requirement_id (str): OpenFastTrace requirement identifier.
+            file_patterns (str): Optional filename patterns that OpenFastTrace should parse; expects a ,-separated list.
+            tags (str): Optional tags to pass to the OpenFastTrace invocation.
 
         Notes:
-            tbd.
+            This requires a working OpenFastTrace installation in the context that the trudag
+            instance invoking this renderer is running in, and JAVA_HOME and PATH env variables
+            to be set accordingly. There is the possibility to override these variables below.
+            Also, this renderer looks for the OpenFastTrace jar files in "/opt/oft/lib", again
+            this can be modified below.
         """
         self._requirement_id = requirement_id
-  
+        self._file_patterns = file_patterns.split(',')
+        self._tags = tags
 
   @classmethod
   def type(cls) -> str:
@@ -135,8 +142,51 @@ class OpenFastTraceReference(BaseReference):
 
   @property
   def content(self) -> bytes:
-    # todo
-    return self._requirement_id.encode()
+    # This is there the OpenFastTrace jar files are placed
+    OFT_DIR = "/opt/oft/lib"
+
+    # Set up oft tool execution environment
+    env = os.environ.copy()
+    if "JAVA_HOME" not in env:
+        env["JAVA_HOME"] = "/usr/lib/jvm/openjdk-jre-21"
+    if "PATH" not in env or f"{env['JAVA_HOME']}/bin" not in env["PATH"]:
+        env["PATH"] = f"{env['JAVA_HOME']}/bin:" + env.get("PATH", "")
+    options = ["-o", "plain", "-t", self._tags.strip()]
+    cmd = [
+        "java",
+        "-cp", f"{OFT_DIR}/*",
+        "org.itsallcode.openfasttrace.core.cli.CliStarter",
+        "trace",
+        *options,
+        *self._file_patterns
+    ]
+
+    # Execute oft command
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=True,
+            env=env            
+        )
+    except FileNotFoundError:
+        return "Java executable not found. Is Java installed and in PATH?".encode()
+    except subprocess.CalledProcessError as e:
+        return (
+            f"ERROR: Trace command failed (exit code {e.returncode})\n"
+            f"stderr:\n{e.stderr}"
+        ).encode()
+
+    # Process oft output, search lines containing requirement-id 
+    filtered_lines = [
+        line for line in result.stdout.splitlines()
+        if self._requirement_id in line
+    ]
+    if not filtered_lines:
+        return f"No information found for requirement ID {self._requirement_id}".encode()
+
+    return "\n".join(filtered_lines).encode()
 
   def as_markdown(self, filepath: None | str = None) -> str:
     return f"`{self._requirement_id}`"

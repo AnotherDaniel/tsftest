@@ -59,6 +59,24 @@ jobs:
           asset_name: "Project README"
           asset_tsf_ids: "TSFTEST-PROJECT_README,TSFTEST-PROJECT_SCOPE"
 
+      # Add an OFT requirements item
+      - name: tsffer README evidence
+        uses: AnotherDaniel/tsffer@v0.5.5
+        id: tsffer_requirement
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          mode: reference
+          reference_properties: |
+            {
+              "reference_type": "openfasttrace",
+              "requirement_id": "req-test",
+              "file_patterns": "trustable/*.md"
+            }
+          asset_description: "Tracing info for an OpenFastTrace requirement"
+          asset_name: "OpenFastTrace Requirement"
+          asset_tsf_ids: "TSFTEST-PROJECT_README"
+
   trustable_scoring:
     # This only runs if this workflow is initiated via a tag-push with pattern 'v*'
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
