@@ -1,10 +1,14 @@
+# Python stuff
+.dotstop_extensions/__pycache__
+
 # act configs
 payload.json
 
 # mkdocs-generated files
 site/
 tsfserve.egg-info/
+mkdocs/trustable/**
+!mkdocs/trustable/
+!mkdocs/trustable/.nav.yml
 
-docs/trustable/**
-!docs/trustable/
-!docs/trustable/.nav.yml
+trustable/tsftemplate/archive/

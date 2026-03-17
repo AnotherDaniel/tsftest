@@ -4,8 +4,10 @@ repo_name: !ENV REPO_NAME
 site_url: !ENV SITE_URL
 #site_dir: site
 
+docs_dir: mkdocs
+
 extra:
-  version: !ENV VERSION
+  version: !ENV [VERSION, "local"]
   main_path: !ENV MAIN_PATH
   sm:
     source: !ENV REPO_URL
@@ -15,9 +17,9 @@ theme:
   name: material
   icon:
     logo: fontawesome/solid/chart-diagram
-  favicon: assets/images/favicon.svg  
+  favicon: assets/images/favicon.svg
   font: false
-  custom_dir: docs/overrides
+  custom_dir: mkdocs/overrides
   features:
     - content.code.copy
     - content.code.annotate

@@ -3,6 +3,7 @@ import requests
 import subprocess
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from trudag.dotstop.core.reference.references import BaseReference, FileReference
@@ -87,19 +88,21 @@ class WebReference(BaseReference):
 
 
 class DownloadUrlReference(BaseReference):
-  def __init__(self, url: str) -> None:
+  def __init__(self, url: str, description: str) -> None:
         """
         References a file download URL, e.g. pointing to a GitHub release artifact.
 
         This reference simply holds the download URL, and renders a useful markdown representation.
 
         Args:
-            download_url (str): URL of the file to reference.
+            url (str): URL of the file to reference.
+            decription (str): Brief description of the referenced file, for documentation/report generation purposes.
 
         Notes:
-            No network access/file download is performed by this renderer.
+            -
         """
         self._url = url
+        self._description = description
 
   @classmethod
   def type(cls) -> str:
@@ -107,90 +110,214 @@ class DownloadUrlReference(BaseReference):
 
   @property
   def content(self) -> bytes:
-    return self._url.encode()
+    try:
+        response = requests.get(self._url)
+        response.raise_for_status()
+        return response.content
+    except requests.exceptions.ConnectionError:
+        raise ConnectionError(f"Failed to connect to URL: {self._url}")
+    except requests.exceptions.Timeout:
+        raise TimeoutError(f"Request timed out for URL: {self._url}")
+    except requests.exceptions.HTTPError as e:
+        raise RuntimeError(f"HTTP error for URL: {self._url}") from e
+    except requests.exceptions.RequestException as e:
+        raise RuntimeError(f"Unexpected error downloading {self._url}: {e}") from e
 
   def as_markdown(self, filepath: None | str = None) -> str:
-    return f"`{self._url}`"
+    return f"[{self._description}]({self._url})"
+
+  def __str__(self) -> str:
+        return f"{self._description} at {self._url}"
 
 
 class OpenFastTraceReference(BaseReference):
-  def __init__(self, requirement_id: str, file_patterns: str = "", tags: str = "") -> None:
+  _index_cache: dict[str, dict[str, dict]] = {}
+
+  def __init__(self, requirement_id: str) -> None:
         """
         References to an OpenFastTrace requirement idenfier.
 
-        This will do something useful with this requirement id.
+        Parses an OFT aspec XML report (path taken from the OFT_ASPEC environment
+        variable) and renders a concise summary for the given requirement.
 
         Args:
             requirement_id (str): OpenFastTrace requirement identifier.
-            file_patterns (str): Optional filename patterns that OpenFastTrace should parse; expects a ,-separated list.
-            tags (str): Optional tags to pass to the OpenFastTrace invocation.
 
         Notes:
-            This requires a working OpenFastTrace installation in the context that the trudag
-            instance invoking this renderer is running in, and JAVA_HOME and PATH env variables
-            to be set accordingly. There is the possibility to override these variables below.
-            Also, this renderer looks for the OpenFastTrace jar files in "/opt/oft/lib", again
-            this can be modified below.
+            Requires the OFT_ASPEC environment variable to point at a valid
+            aspec XML file.  The parsed index is cached at class level so that
+            repeated calls (e.g. when the host tool processes many references)
+            do not re-parse the XML each time.
         """
-        self._requirement_id = requirement_id
-        self._file_patterns = file_patterns.split(',')
-        self._tags = tags
+        self._requirement_id = str(requirement_id)
 
   @classmethod
   def type(cls) -> str:
     return "openfasttrace"
 
+  @classmethod
+  def _get_index(cls, aspec_path: str) -> dict[str, dict]:
+    if aspec_path not in cls._index_cache:
+        tree = ET.parse(aspec_path)  # noqa: S314 — trusted local file
+        root = tree.getroot()
+        index: dict[str, dict] = {}
+        for specobjects in root.findall("specobjects"):
+            doctype = specobjects.get("doctype", "")
+            for so in specobjects.findall("specobject"):
+                item_id = so.findtext("id", "")
+                version = so.findtext("version", "")
+                key = f"{doctype}~{item_id}~{version}"
+                index[key] = {
+                    "doctype": doctype,
+                    "id": item_id,
+                    "version": version,
+                    "shortdesc": so.findtext("shortdesc", ""),
+                    "status": so.findtext("status", ""),
+                    "sourcefile": so.findtext("sourcefile", ""),
+                    "sourceline": so.findtext("sourceline", ""),
+                    "description": so.findtext("description", ""),
+                    "element": so,
+                }
+        cls._index_cache[aspec_path] = index
+    return cls._index_cache[aspec_path]
+
   @property
   def content(self) -> bytes:
-    # This is there the OpenFastTrace jar files are placed
-    OFT_DIR = "/opt/oft/lib"
+    return self.as_markdown().encode("utf-8")
 
-    # Set up oft tool execution environment
-    env = os.environ.copy()
-    if "JAVA_HOME" not in env:
-        env["JAVA_HOME"] = "/usr/lib/jvm/openjdk-jre-21"
-    if "PATH" not in env or f"{env['JAVA_HOME']}/bin" not in env["PATH"]:
-        env["PATH"] = f"{env['JAVA_HOME']}/bin:" + env.get("PATH", "")
-    options = ["-o", "plain", "-t", self._tags.strip()]
-    cmd = [
-        "java",
-        "-cp", f"{OFT_DIR}/*",
-        "org.itsallcode.openfasttrace.core.cli.CliStarter",
-        "trace",
-        *options,
-        *self._file_patterns
-    ]
+  @staticmethod
+  def _spec_key(el: ET.Element) -> str:
+    """Build a doctype~id~version key from an XML element."""
+    return f"{el.findtext('doctype', '')}~{el.findtext('id', '')}~{el.findtext('version', '')}"
 
-    # Execute oft command
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            check=True,
-            env=env            
-        )
-    except FileNotFoundError:
-        return "Java executable not found. Is Java installed and in PATH?".encode()
-    except subprocess.CalledProcessError as e:
-        return (
-            f"ERROR: Trace command failed (exit code {e.returncode})\n"
-            f"stderr:\n{e.stderr}"
-        ).encode()
+  @staticmethod
+  def _source_link(sourcefile: str, sourceline: str) -> str:
+    """Format a source file reference as a markdown link when possible."""
+    label = f"{sourcefile}:{sourceline}" if sourceline else sourcefile
+    server = os.environ.get("GITHUB_SERVER_URL", "")
+    repo = os.environ.get("GITHUB_REPOSITORY", "")
+    sha = os.environ.get("GITHUB_SHA", "")
+    if server and repo and sha:
+        url = f"{server}/{repo}/blob/{sha}/{urllib.parse.quote(sourcefile, safe='/')}"
+        if sourceline:
+            url += f"#L{sourceline}"
+        return f"[{label}]({url})"
+    return f"`{label}`"
 
-    # Process oft output, search lines containing requirement-id 
-    filtered_lines = [
-        line for line in result.stdout.splitlines()
-        if self._requirement_id in line
-    ]
-    if not filtered_lines:
-        return f"No information found for requirement ID {self._requirement_id}".encode()
-
-    return "\n".join(filtered_lines).encode()
+  def _resolve_item(self, index: dict[str, dict]) -> dict | None:
+    """Resolve requirement_id to an index entry, trying exact key, bare ID, and doctype~id."""
+    spec_id = self._requirement_id
+    item = index.get(spec_id)
+    if item is not None:
+        return item
+    # Try matching by bare ID (without doctype~…~version prefix/suffix)
+    matches = [v for v in index.values() if v["id"] == spec_id]
+    if not matches:
+        # Also try interpreting "doctype~id" format (no version)
+        parts = spec_id.split("~", 1)
+        if len(parts) == 2:
+            dtype, bare_id = parts
+            matches = [v for v in index.values()
+                       if v["doctype"] == dtype and v["id"] == bare_id]
+    if matches:
+        # Prefer req-type items when multiple matches exist
+        req_matches = [m for m in matches if m["doctype"] == "req"]
+        return req_matches[0] if req_matches else matches[0]
+    return None
 
   def as_markdown(self, filepath: None | str = None) -> str:
-    return f"`{self._requirement_id}`"
+    aspec_path = os.environ.get("OFT_ASPEC", "")
+    if not aspec_path:
+        return "OFT_ASPEC is not set or empty; cannot extract OFT report information."
 
+    index = self._get_index(aspec_path)
+    item = self._resolve_item(index)
+    if item is None:
+        return f"Spec item '{self._requirement_id}' not found in OFT report ({aspec_path})"
+
+    so: ET.Element = item["element"]
+    coverage = so.find("coverage")
+
+    # --- needs & coverage status ---
+    needs: list[str] = []
+    covered_types: set[str] = set()
+    if coverage is not None:
+        needs = [n.text or "" for n in coverage.findall("needscoverage/needsobj")]
+        covered_types = {
+            ct.text or "" for ct in coverage.findall("coveredTypes/coveredType")
+        }
+
+    shallow = (
+        coverage.findtext("shallowCoverageStatus", "") if coverage is not None else ""
+    )
+    has_needs = len(needs) > 0
+    is_ok = (shallow == "COVERED") if has_needs else True
+    status_icon = "\u2713" if is_ok else "\u2717"
+
+    needs_display = [n if n in covered_types else f"-{n}" for n in needs]
+
+    # --- incoming links (items that cover this req) ---
+    incoming: list[dict[str, str]] = []
+    if coverage is not None:
+        for cso in coverage.findall("coveringSpecObjects/coveringSpecObject"):
+            c_key = self._spec_key(cso)
+            src = index.get(c_key, {})
+            incoming.append({
+                "id": c_key,
+                "sourcefile": src.get("sourcefile", ""),
+                "sourceline": src.get("sourceline", ""),
+            })
+
+    # --- dependencies ---
+    deps: list[str] = []
+    deps_elem = so.find("dependencies")
+    if deps_elem is not None:
+        for d in deps_elem.findall("dependsOnSpecObject"):
+            deps.append(self._spec_key(d))
+
+    # --- assemble summary ---
+    lines: list[str] = []
+    full_id = f"{item['doctype']}~{item['id']}~{item['version']}"
+
+    # Header with status, requirement name, and qualified ID
+    lines.append(f"{status_icon} **{item['shortdesc']}** &mdash; `{full_id}`")
+
+    # Requirement text
+    if item["description"]:
+        lines.append("")
+        lines.append(f"> {item['description']}")
+
+    lines.append("")
+
+    # Compact metadata
+    meta_parts = [f"**Source:** {self._source_link(item['sourcefile'], item['sourceline'])}"]
+    if needs_display:
+        meta_parts.append(f"**Needs:** {', '.join(needs_display)}")
+    if shallow:
+        meta_parts.append(f"**Coverage:** {shallow}")
+    lines.append(" · ".join(meta_parts))
+
+    # Covered by (items that implement/cover this req)
+    if incoming:
+        lines.append("")
+        lines.append(f"**Covered by** ({len(incoming)}):")
+        lines.append("")
+        for inc in incoming:
+            src = f" — {self._source_link(inc['sourcefile'], inc['sourceline'])}" if inc["sourcefile"] else ""
+            lines.append(f"- `{inc['id']}`{src}")
+
+    # Dependencies
+    if deps:
+        lines.append("")
+        lines.append(f"**Depends on** ({len(deps)}):")
+        lines.append("")
+        for d in deps:
+            lines.append(f"- `{d}`")
+
+    return "\n".join(lines)
+
+  def __str__(self) -> str:
+    return f"OpenFastTrace requirement {self._requirement_id})"
 
 
 class GithubFileReference(FileReference):

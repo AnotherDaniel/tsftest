@@ -20,6 +20,10 @@ on:
     workflow_call:
     workflow_dispatch:
 
+concurrency:
+    group: "publish-${{ github.head_ref || github.ref }}"
+    cancel-in-progress: true
+
 permissions:
     contents: read
     pages: write
@@ -39,7 +43,7 @@ jobs:
               uses: actions/download-artifact@v6
               with:
                   name: trustable-report-files
-                  path: docs/trustable
+                  path: mkdocs/trustable
 
             - name: Build site
               env:

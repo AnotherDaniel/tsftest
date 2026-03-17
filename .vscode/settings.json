@@ -1,5 +1,6 @@
 {
     "yaml.customTags": [
-        "!ENV scalar"
+        "!ENV scalar",
+        "!ENV sequence"
     ]
 }

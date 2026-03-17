@@ -53,14 +53,15 @@ jobs:
           reference_properties: |
             {
               "reference_type": "download_url",
-              "url": "${{ steps.upload_README.outputs.browser_download_url }}"
+              "url": "${{ steps.upload_README.outputs.browser_download_url }}",
+              "description": "Project README"
             }
           asset_description: "The tsftemplate README file"
           asset_name: "Project README"
           asset_tsf_ids: "TSFTEMPLATE-PROJECT_README,TSFTEMPLATE-PROJECT_SCOPE"
 
       # Add an OFT requirements item
-      - name: tsffer README evidence
+      - name: tsffer OFT requirement evidence
         uses: AnotherDaniel/tsffer@v0.5.5
         id: tsffer_requirement
         env:
@@ -70,16 +71,38 @@ jobs:
           reference_properties: |
             {
               "reference_type": "openfasttrace",
-              "requirement_id": "req-test",
-              "file_patterns": "trustable/*.md"
+              "requirement_id": "req~project-readme"
             }
           asset_description: "Tracing info for an OpenFastTrace requirement"
           asset_name: "OpenFastTrace Requirement"
           asset_tsf_ids: "TSFTEMPLATE-PROJECT_README"
 
+  openfasttrace_report:
+    name: Generate openfasttrace report in aspec format
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    needs:
+      - quality_artifacts
+    outputs:
+      tracing-report-name: ${{ steps.run-oft.outputs.tracing-report-name }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: "Determine OpenFastTrace file patterns from .env file"
+        uses: xom9ikk/dotenv@v2.3.0
+        with:
+          mode: "oft"
+          load-mode: strict
+      - name: Run OpenFastTrace
+        id: run-oft
+        uses: AnotherDaniel/tsftemplate/.github/actions/run-oft@main
+        with:
+          report-format: "aspec"
+          file-patterns: "${{ env.OFT_FILE_PATTERNS }}"
+          tags: "${{ env.OFT_TAGS_}}"
+
   trustable_scoring:
-    # This only runs if this workflow is initiated via a tag-push with pattern 'v*'
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     name: Package and publish tsf artifacts
     runs-on: ubuntu-latest
     permissions:
@@ -87,6 +110,7 @@ jobs:
       actions: read
     needs:
       - quality_artifacts
+      - openfasttrace_report
     steps:
       - uses: actions/checkout@v6
 
@@ -99,11 +123,25 @@ jobs:
           mode: package
           release_upload: true
 
+      - name: Retrieve OFT report for tsflink analysis
+        uses: actions/download-artifact@v6
+        with:
+          name: oft-tracing-report
+          path: mkdocs/trustable
+      - name: Upload OFT report to release artifacts
+        uses: svenstaro/upload-release-action@v2
+        id: upload_OFT_report
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: "mkdocs/trustable/${{ needs.openfasttrace_report.outputs.tracing-report-name }}"
+          tag: ${{ github.ref }}
+
       - name: Link, score and publish TSF tree
-        uses: AnotherDaniel/tsflink@v0.1.7
+        uses: AnotherDaniel/tsflink@v0.1.10
         id: link_tsffer
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OFT_ASPEC: "mkdocs/trustable/${{ needs.openfasttrace_report.outputs.tracing-report-name }}"
 
       - name: Store published report for deployment
         uses: actions/upload-artifact@v6
