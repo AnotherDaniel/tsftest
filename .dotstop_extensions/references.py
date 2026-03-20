@@ -1,12 +1,41 @@
 import os
 import requests
-import subprocess
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from trudag.dotstop.core.reference.references import BaseReference, FileReference
+
+
+def _parse_line_anchor(value: str, sep: str = "#L") -> tuple[str, int | None, int | None]:
+    """Parse an optional line anchor from a string.
+
+    Recognises ``#L<start>`` and ``#L<start>-L<end>`` suffixes.
+    Returns ``(stripped_value, start, end)``.
+    """
+    start: int | None = None
+    end: int | None = None
+    if sep in value:
+        base, anchor = value.split(sep, 1)
+        if "-L" in anchor:
+            a, b = anchor.split("-L", 1)
+            try:
+                start = int(a)
+            except ValueError:
+                start = None
+            try:
+                end = int(b)
+            except ValueError:
+                end = start
+        else:
+            try:
+                start = int(anchor)
+            except ValueError:
+                start = None
+        value = base
+    return value, start, end
+
 
 class WebReference(BaseReference):
   def __init__(self, url: str, description: str) -> None:
@@ -15,47 +44,17 @@ class WebReference(BaseReference):
 
         This reference fetches the page at the given URL using `requests` and exposes
         its content via the `content` property. The content is returned as UTF-8
-        encoded bytes. Optional line anchors can be embedded in the URL (e.g.
-        "https://example.com/file.txt#L10" or "https://example.com/file.txt#L5-L15")
-        to highlight specific lines in the returned content with markdown blockquote
-        prefix (> ).
+        encoded bytes.
 
         Args:
             url (str): URL of the webpage to reference. Must be a valid HTTP or HTTPS URL.
-                       May optionally include line anchors like #L10 or #L10-L20.
-            decription (str): Brief description of the referenced website.
+            description (str): Brief description of the referenced website.
 
         Notes:
             Network errors will raise `requests.RequestException` when accessing `content`.
-            Line anchors are stripped before fetching but used to highlight lines in the result.
         """
-        # allow optional line anchor embedded in the URL (e.g. "http://example.com/file#L12" or
-        # "http://example.com/file#L5-L10"). record the bounds and strip the anchor before
-        # passing to requests.get() so the URL is valid.
-        start: int | None = None
-        end: int | None = None
-        if "#L" in url:
-            base, anchor = url.split("#L", 1)
-            if "-L" in anchor:
-                a, b = anchor.split("-L", 1)
-                try:
-                    start = int(a)
-                except ValueError:
-                    start = None
-                try:
-                    end = int(b)
-                except ValueError:
-                    end = start
-            else:
-                try:
-                    start = int(anchor)
-                except ValueError:
-                    start = None
-            url = base
         self._url = url
         self._description = description
-        self._start = start
-        self._end = end
 
   @classmethod
   def type(cls) -> str:
@@ -67,26 +66,7 @@ class WebReference(BaseReference):
   @property
   def content(self) -> bytes:
     response = requests.get(self._url)
-    raw = response.text.encode('utf-8')
-
-    # if no anchor present just return raw bytes
-    if self._start is None:
-      return raw
-
-    # highlight selected lines in markdown style by prefixing with '> '
-    text = response.text
-    lines = text.splitlines(keepends=True)
-    start_val: int = self._start  # type: ignore[assignment]
-    start_idx = max(start_val - 1, 0)
-    end_val: int = self._end if self._end is not None else start_val  # type: ignore[assignment]
-    end_idx = min(end_val, len(lines))
-    out_lines: list[str] = []
-    for idx, line in enumerate(lines, start=1):
-      if start_idx <= idx - 1 < end_idx:
-        out_lines.append(f"> {line}")
-      else:
-        out_lines.append(line)
-    return "".join(out_lines).encode('utf-8')
+    return response.text.encode('utf-8')
 
   def as_markdown(self, filepath: None | str = None) -> str:
     return f"[{self._description}]({self._url})"
@@ -101,7 +81,7 @@ class DownloadUrlReference(BaseReference):
 
         Args:
             url (str): URL of the file to reference.
-            decription (str): Brief description of the referenced file, for documentation/report generation purposes.
+            description (str): Brief description of the referenced file, for documentation/report generation purposes.
 
         Notes:
             -
@@ -140,7 +120,7 @@ class OpenFastTraceReference(BaseReference):
 
   def __init__(self, requirement_id: str) -> None:
         """
-        References to an OpenFastTrace requirement idenfier.
+        References to an OpenFastTrace requirement identifier.
 
         Parses an OFT aspec XML report (path taken from the OFT_ASPEC environment
         variable) and renders a concise summary for the given requirement.
@@ -322,7 +302,7 @@ class OpenFastTraceReference(BaseReference):
     return "\n".join(lines)
 
   def __str__(self) -> str:
-    return f"OpenFastTrace requirement {self._requirement_id})"
+    return f"OpenFastTrace requirement {self._requirement_id}"
 
 
 class GithubFileReference(FileReference):
@@ -340,7 +320,7 @@ class GithubFileReference(FileReference):
         """
         References to Artifacts that are regular files in a GitHub repository.
 
-        For acessing non-public repositories, a valid [github token](https://docs.github.com/en/actions/concepts/security/github_token) 
+        For accessing non-public repositories, a valid [github token](https://docs.github.com/en/actions/concepts/security/github_token)
         with sufficient read permissions must be available in the current environment.
         Several attempts are made to get a token, with the following precedence:
 
@@ -349,35 +329,14 @@ class GithubFileReference(FileReference):
 
         Args:
             repository (str): repository id
-            path (str): Path to the Artifact, relative to the root of the repository
+            path (str): Path to the Artifact, relative to the root of the repository.
+                        May include a line anchor suffix (e.g. ``#L10`` or ``#L5-L15``).
             public (bool): Indicate whether the repository is public (defaults to `true`, non-public repos require an access token to be set)
             ref (str, optional): Tag, branch or sha (defaults to `main`)
             token (str, optional): Environmental variable containing a suitable access token. Defaults to "GITHUB_TOKEN".
         """
         self._repository = repository
-        # allow optional line anchor embedded in the path (e.g. "foo.txt#L12" or
-        # "foo.txt#L5-L10"). record the bounds and strip the anchor before
-        # converting to Path so the downloader still sees a valid filename.
-        start: int | None = None
-        end: int | None = None
-        if "#L" in path:
-            base, anchor = path.split("#L", 1)
-            if "-L" in anchor:
-                a, b = anchor.split("-L", 1)
-                try:
-                    start = int(a)
-                except ValueError:
-                    start = None
-                try:
-                    end = int(b)
-                except ValueError:
-                    end = start
-            else:
-                try:
-                    start = int(anchor)
-                except ValueError:
-                    start = None
-            path = base
+        path, start, end = _parse_line_anchor(path)
         self._path = Path(path)
         self._start = start
         self._end = end
@@ -399,35 +358,13 @@ class GithubFileReference(FileReference):
 
     def _get_query(self) -> str:
         # https://github.com/<your_Github_username>/<your_repository_name>/blob/<branch_name>/<file_name>.<extension_name>
-        query = f"{self._url}/{self._repository}/blob/{self._ref}/{urllib.parse.quote(str(self._path), safe='')}"
+        query = f"{self._url}/{self._repository}/blob/{self._ref}/{urllib.parse.quote(str(self._path), safe='/')}"
         if getattr(self, '_start', None) is not None:
             if self._end is None or self._end == self._start:
                 query += f"#L{self._start}"
             else:
                 query += f"#L{self._start}-L{self._end}"
         return query
-
-    @property
-    def content(self) -> bytes:
-        text = self._fetch_text()
-
-        # if no anchor present just return raw bytes
-        if self._start is None:
-            return text.encode('utf-8')
-
-        # highlight selected lines in markdown style by prefixing with '> '
-        lines = text.splitlines(keepends=True)
-        start_val: int = self._start  # type: ignore[assignment]
-        start_idx = max(start_val - 1, 0)
-        end_val: int = self._end if self._end is not None else start_val  # type: ignore[assignment]
-        end_idx = min(end_val, len(lines))
-        out_lines: list[str] = []
-        for idx, line in enumerate(lines, start=1):
-            if start_idx <= idx - 1 < end_idx:
-                out_lines.append(f"> {line}")
-            else:
-                out_lines.append(line)
-        return "".join(out_lines).encode('utf-8')
 
     def _get_raw_url(self) -> str:
         """Build a raw.githubusercontent.com URL for fetching file content."""
@@ -457,6 +394,10 @@ class GithubFileReference(FileReference):
             return raw.decode('utf-8')
         except Exception:
             return raw.decode('utf-8', errors='replace')
+
+    @property
+    def content(self) -> bytes:
+        return self._fetch_text().encode('utf-8')
 
     def as_markdown(self, filepath: None | str = None) -> str:
         link = f"[{self._path}]({self._get_query()})"
