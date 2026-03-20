@@ -9,7 +9,7 @@ from pathlib import Path
 from trudag.dotstop.core.reference.references import BaseReference, FileReference
 
 class WebReference(BaseReference):
-  def __init__(self, url: str) -> None:
+  def __init__(self, url: str, description: str) -> None:
         """
         References to arbitrary web pages.
 
@@ -23,6 +23,7 @@ class WebReference(BaseReference):
         Args:
             url (str): URL of the webpage to reference. Must be a valid HTTP or HTTPS URL.
                        May optionally include line anchors like #L10 or #L10-L20.
+            decription (str): Brief description of the referenced website.
 
         Notes:
             Network errors will raise `requests.RequestException` when accessing `content`.
@@ -59,6 +60,9 @@ class WebReference(BaseReference):
   def type(cls) -> str:
     return "webpage"
 
+  def __str__(self) -> str:
+    return f"Webpage at {self._url}"
+
   @property
   def content(self) -> bytes:
     response = requests.get(self._url)
@@ -84,7 +88,7 @@ class WebReference(BaseReference):
     return "".join(out_lines).encode('utf-8')
 
   def as_markdown(self, filepath: None | str = None) -> str:
-    return f"`{self._url}`"
+    return f"[{self._description}]({self._url})"
 
 
 class DownloadUrlReference(BaseReference):
@@ -108,6 +112,9 @@ class DownloadUrlReference(BaseReference):
   def type(cls) -> str:
     return "download_url"
 
+  def __str__(self) -> str:
+    return f"{self._description} at {self._url}"
+
   @property
   def content(self) -> bytes:
     try:
@@ -125,9 +132,6 @@ class DownloadUrlReference(BaseReference):
 
   def as_markdown(self, filepath: None | str = None) -> str:
     return f"[{self._description}]({self._url})"
-
-  def __str__(self) -> str:
-        return f"{self._description} at {self._url}"
 
 
 class OpenFastTraceReference(BaseReference):
@@ -385,6 +389,13 @@ class GithubFileReference(FileReference):
     def type(cls) -> str:
         return "github"
 
+    def __str__(self) -> str:
+        return f"GitHub file reference to {self._get_query()}"
+
+    @property
+    def extension(self) -> str:
+        return self._path.suffix
+
     def _get_query(self) -> str:
         # https://github.com/<your_Github_username>/<your_repository_name>/blob/<branch_name>/<file_name>.<extension_name>
         query = f"{self._url}/{self._repository}/blob/{self._ref}/{urllib.parse.quote(str(self._path), safe='')}"
@@ -397,37 +408,15 @@ class GithubFileReference(FileReference):
 
     @property
     def content(self) -> bytes:
-        query = self._get_query()
-        try:
-            req = urllib.request.Request(query)
-        except Exception as exc:
-            raise ReferenceError(f"Parse error for URL: {query}") from exc
-        if not self._public:
-            token = os.environ.get(self._token_env_var)
-            if not token:
-                token = os.environ.get(GithubFileReference.DEFAULT_TOKEN_ENV_VAR)
-            if not token:
-                err_msg = f"Access token must be set in ${self._token_env_var} or ${GithubFileReference.DEFAULT_TOKEN_ENV_VAR} for url {query}"
-                raise ReferenceError(err_msg)
-            req.add_header('Authorization', 'Bearer %s' % token)
-        try:
-            resp = urllib.request.urlopen(req)
-        except Exception as exc:
-            raise ReferenceError(f"Could not GET: {query}") from exc
-        
-        raw = resp.read()
+        text = self._fetch_text()
 
         # if no anchor present just return raw bytes
-        if getattr(self, '_start', None) is None:
-            return raw
+        if self._start is None:
+            return text.encode('utf-8')
 
-        start_val: int = self._start  # type: ignore[assignment]
         # highlight selected lines in markdown style by prefixing with '> '
-        try:
-            text = raw.decode('utf-8')
-        except Exception:
-            text = raw.decode('utf-8', errors='replace')
         lines = text.splitlines(keepends=True)
+        start_val: int = self._start  # type: ignore[assignment]
         start_idx = max(start_val - 1, 0)
         end_val: int = self._end if self._end is not None else start_val  # type: ignore[assignment]
         end_idx = min(end_val, len(lines))
@@ -439,9 +428,55 @@ class GithubFileReference(FileReference):
                 out_lines.append(line)
         return "".join(out_lines).encode('utf-8')
 
-    @property
-    def extension(self) -> str:
-        return self._path.suffix
+    def _get_raw_url(self) -> str:
+        """Build a raw.githubusercontent.com URL for fetching file content."""
+        return f"https://raw.githubusercontent.com/{self._repository}/{self._ref}/{urllib.parse.quote(str(self._path), safe='/')}"
 
-    def __str__(self) -> str:
-        return self._get_query()
+    def _fetch_text(self) -> str:
+        """Fetch the raw file content as text."""
+        url = self._get_raw_url()
+        try:
+            req = urllib.request.Request(url)
+        except Exception as exc:
+            raise ReferenceError(f"Parse error for URL: {url}") from exc
+        if not self._public:
+            token = os.environ.get(self._token_env_var)
+            if not token:
+                token = os.environ.get(GithubFileReference.DEFAULT_TOKEN_ENV_VAR)
+            if not token:
+                err_msg = f"Access token must be set in ${self._token_env_var} or ${GithubFileReference.DEFAULT_TOKEN_ENV_VAR} for url {url}"
+                raise ReferenceError(err_msg)
+            req.add_header('Authorization', 'Bearer %s' % token)
+        try:
+            resp = urllib.request.urlopen(req)
+        except Exception as exc:
+            raise ReferenceError(f"Could not GET: {url}") from exc
+        raw = resp.read()
+        try:
+            return raw.decode('utf-8')
+        except Exception:
+            return raw.decode('utf-8', errors='replace')
+
+    def as_markdown(self, filepath: None | str = None) -> str:
+        link = f"[{self._path}]({self._get_query()})"
+        try:
+            text = self._fetch_text()
+        except ReferenceError:
+            return link
+
+        lines = text.splitlines()
+        lang = self._path.suffix.lstrip('.') or ""
+
+        if self._start is not None:
+            # Extract snippet around the anchor with 3 lines of context
+            start_val: int = self._start
+            end_val: int = self._end if self._end is not None else start_val
+            snippet_start = max(start_val - 1 - 3, 0)
+            snippet_end = min(end_val + 3, len(lines))
+            snippet = lines[snippet_start:snippet_end]
+            first_line = snippet_start + 1
+            # Number lines so the anchor context is clear
+            numbered = [f"{first_line + i:4d} | {line}" for i, line in enumerate(snippet)]
+            return f"{link}\n\n```{lang}\n" + "\n".join(numbered) + "\n```"
+
+        return f"{link}\n\n```{lang}\n" + "\n".join(lines) + "\n```"

@@ -47,7 +47,8 @@ jobs:
             [
               {
                 "reference_type": "webpage",
-                "url": "https://www.eclipse.org/security/policy/"
+                "url": "https://www.eclipse.org/security/policy/",
+                "description": "Eclipse Foundation Security Policy"
               },
               {
                 "reference_type": "github",
