@@ -10,6 +10,12 @@
  * SPDX-License-Identifier: EPL-2.0
 -->
 
+`impl~project-readme~1`
+Covers:
+- req~project-readme~1
+
+---
+
 # tsftemplate Repository
 
 The tsftemplate Repository is a hello-world style template illustrating how to build Trustable Software Framework [TSF](https://codethinklabs.gitlab.io/trustable/trustable/) CI pipelines that automate the collection of TSF statement evidence, the scoring of the resulting TSF tree and generation of a TSF report.
