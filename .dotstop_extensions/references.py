@@ -325,7 +325,6 @@ class GithubFileReference(FileReference):
 
     def __init__(
         self,
-        project: str,
         repository: str,
         path: str,
         public: bool = True,

@@ -35,6 +35,29 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # Add Security-Policy requirement item (illustrate 'webpage' reference-type)
+      - name: tsffer Security Policy evidence
+        uses: AnotherDaniel/tsffer@v0.5.5
+        id: tsffer_security_policy
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          mode: reference
+          reference_properties: |
+            {
+              "reference_type": "webpage",
+              "url": "https://www.eclipse.org/security/policy/"
+            },
+            {
+              "reference_type": "github",
+              "repository": "${{ github.repository }}",
+              "path": "SECURITY.md",
+              "ref": "${{ github.ref }}"
+            }
+          asset_description: "Project security policy definition and associated link"
+          asset_name: "Security Policy link"
+          asset_tsf_ids: "TSFTEMPLATE-SECURITY_POLICY"
+
       # Add README evidence item
       - name: Upload README to release
         uses: svenstaro/upload-release-action@v2
