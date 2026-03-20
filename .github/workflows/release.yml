@@ -44,16 +44,18 @@ jobs:
         with:
           mode: reference
           reference_properties: |
-            {
-              "reference_type": "webpage",
-              "url": "https://www.eclipse.org/security/policy/"
-            },
-            {
-              "reference_type": "github",
-              "repository": "${{ github.repository }}",
-              "path": "SECURITY.md",
-              "ref": "${{ github.ref }}"
-            }
+            [
+              {
+                "reference_type": "webpage",
+                "url": "https://www.eclipse.org/security/policy/"
+              },
+              {
+                "reference_type": "github",
+                "repository": "${{ github.repository }}",
+                "path": "SECURITY.md",
+                "ref": "${{ github.ref }}"
+              }
+            ]
           asset_description: "Project security policy definition and associated link"
           asset_name: "Security Policy link"
           asset_tsf_ids: "TSFTEMPLATE-SECURITY_POLICY"

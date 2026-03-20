@@ -16,26 +16,9 @@ The tsftemplate Repository is a hello-world style template illustrating how to b
 
 The heart of tsftemplate is a release workflow which serves to illustrate how tsffer and tsflink GitHub actions can be used in CI pipelines to automate the process of collecing TSF evidence, linking it into an existing TSF argument, and performing the scoring and report generation as part of a release flow.
 
-## Project goals
+## Todos
 
-`impl~project-readme~1`
-Covers:
-- req~project-readme~1
-
-Todo
-
-## Project scope
-
-`impl~project-scope~1`
-Covers:
-- req~project-scope~1
-
-Todo
-
-## Getting started
-
-`impl~project-getting_started~1`
-Covers:
-- req~project-getting_started~1
-
-Todo
+- describe workflow idea
+- describe actual release flow
+- describe combination of tools
+- how-to-extend example
