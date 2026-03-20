@@ -53,6 +53,7 @@ class WebReference(BaseReference):
                     start = None
             url = base
         self._url = url
+        self._description = description
         self._start = start
         self._end = end
 

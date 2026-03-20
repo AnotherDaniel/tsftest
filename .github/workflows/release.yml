@@ -53,7 +53,7 @@ jobs:
               {
                 "reference_type": "github",
                 "repository": "${{ github.repository }}",
-                "path": "SECURITY.md",
+                "path": "SECURITY.md#L16-L18",
                 "ref": "${{ github.ref }}"
               }
             ]
