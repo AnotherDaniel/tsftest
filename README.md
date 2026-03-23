@@ -15,13 +15,11 @@
 
 ---
 
-<div hidden>
-
+<!--
 `impl~project-readme~1`
 Covers:
 - req~project-readme~1
-
-</div>
+-->
 
 # tsftemplate Repository
 
