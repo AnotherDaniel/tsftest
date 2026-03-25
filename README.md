@@ -37,6 +37,22 @@ This is a diagram representation of what the TSF method enables software develop
 
 ![tsftemplate helps to streamline the 3 stages of a TSF-driven software quality process.](docs/img/tsftemplate-vision.drawio.svg "tsftemplate Vision")
 
+1. Lower the bar to entry via community-driven TSF statement libraries
+2. Help devs tie together code, docs, specs, CI and TSF monitoring - once
+3. Enable CI workflows that continually score and deliver TSF quality reporting
+
+### Stage I
+
+![Lower the bar to entry via community-driven TSF statement libraries](docs/img/tsftemplate-Stage%20I.drawio.svg "tsftemplate Stage I")
+
+### Stage II
+
+![Help devs tie together code, docs, specs, CI and TSF monitoring - once](docs/img/tsftemplate-Stage%20II.drawio.svg "tsftemplate Stage II")
+
+### Stage III
+
+![Enable CI workflows that continually score and deliver TSF quality reporting](docs/img/tsftemplate-Stage%20III.drawio.svg "tsftemplate Stage III")
+
 ## Todos
 
 - describe workflow idea
